@@ -44,7 +44,8 @@ export default function ManagerApp() {
   const [editing, setEditing] = useState<EditState | null>(null);
   const dates = useMemo(() => weekStart ? Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)) : [], [weekStart]);
   const targetWeek = currentWeekStart ? addDays(currentWeekStart, 7) : "";
-  const editable = weekStart === targetWeek;
+  const weekPosition = weekStart < currentWeekStart ? "past" : weekStart === currentWeekStart ? "current" : weekStart === targetWeek ? "next" : "future";
+  const weekLabel = weekPosition === "past" ? "历史周（可修改）" : weekPosition === "current" ? "本周（可修改）" : weekPosition === "next" ? "正在安排下周" : "未来周（可提前排班）";
 
   async function loadManager(requestedWeek?: string) {
     try {
@@ -130,7 +131,7 @@ export default function ManagerApp() {
   }
 
   async function quickSelect(record: ManagerRecord, shiftDate: string, dayIndex: number, shiftCode: ShiftCode) {
-    if (!editable || savingCell) return;
+    if (savingCell) return;
     const existing = assignmentFor(shiftDate, shiftCode, record.employeeId);
     if (existing) {
       setEditing({ ...existing, previousShiftCode: shiftCode, displayName: record.displayName, dayIndex, availabilityCode: record.availability[shiftDate] });
@@ -160,7 +161,8 @@ export default function ManagerApp() {
   }
 
   async function publishSchedule() {
-    if (!editable || !window.confirm("确认发布这份班表？员工发布后会看到完整正式班表。")) return;
+    const question = weekPosition === "past" ? "这是历史周。确认发布更正后的班表？" : "确认发布这份班表？员工发布后会看到正式班表。";
+    if (!window.confirm(question)) return;
     const response = await fetch("/api/manager/schedule/publish", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ weekStart }) });
     const data = await response.json() as { publishedAt?: string; error?: string };
     if (!response.ok) { setError(data.error || "班表暂时无法发布。"); return; }
@@ -168,7 +170,7 @@ export default function ManagerApp() {
   }
 
   async function saveFinalSchedule() {
-    if (!editable || savingSchedule) return;
+    if (savingSchedule) return;
     setSavingSchedule(true); setError("");
     const response = await fetch("/api/manager/schedule/save", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ weekStart }) });
     const data = await response.json() as { error?: string };
@@ -187,13 +189,13 @@ export default function ManagerApp() {
       <BrandHeader subtitle="MANAGER SCHEDULING" actions={<><Link className="ghost-action" href="/">员工页面</Link><button className="ghost-action" onClick={logout}>退出</button></>} />
       <section className="dashboard-head">
         <div><p className="eyebrow">经理工作台</p><h1>下周排班，<br /><em>一张表完成。</em></h1></div>
-        <aside className="week-summary"><span>{editable ? "NEXT WEEK" : "HISTORY"}</span><strong>{shortDate(weekStart)} — {dates[6] && shortDate(dates[6])}</strong><p>{filled} / 8 人已提交 · {publishedAt ? "已发布" : "未发布"}</p></aside>
+        <aside className="week-summary"><span>{weekPosition === "past" ? "HISTORY" : weekPosition === "current" ? "CURRENT WEEK" : weekPosition === "next" ? "NEXT WEEK" : "FUTURE"}</span><strong>{shortDate(weekStart)} — {dates[6] && shortDate(dates[6])}</strong><p>{filled} / 8 人已提交 · {publishedAt ? "已发布" : "未发布"}</p></aside>
       </section>
       {(message || error) && <Notice error={Boolean(error)} text={error || message} close={() => { setMessage(""); setError(""); }} />}
       <nav className="workspace-tabs" aria-label="经理功能"><button className={activeTab === "schedule" ? "active" : ""} onClick={() => setActiveTab("schedule")}>下周排班</button><button className={activeTab === "employees" ? "active" : ""} onClick={() => setActiveTab("employees")}>员工管理</button></nav>
 
       {activeTab === "schedule" ? <>
-        <div className="week-navigation"><button onClick={() => loadManager(addDays(weekStart, -7))}>← 上一周</button><strong>{editable ? "正在安排下周" : "历史记录（只读）"}</strong><button onClick={() => loadManager(addDays(weekStart, 7))} disabled={weekStart >= targetWeek}>下一周 →</button></div>
+        <div className="week-navigation"><button onClick={() => loadManager(addDays(weekStart, -7))}>← 上一周</button><strong>{weekLabel}</strong><button onClick={() => loadManager(addDays(weekStart, 7))}>下一周 →</button></div>
         <section className="surface schedule-builder">
           <div className="section-heading"><div><p className="step-label">全员排班</p><h2>点击格子选人，选中后可修改时间</h2></div><div className="legend"><span className="legend-available">浅绿：员工可上</span><span className="legend-selected">深绿：已经安排</span><span className="legend-conflict">红框：时间冲突</span></div></div>
           <div className="team-table-wrap"><table className="team-table manager-schedule-table"><thead><tr><th rowSpan={2}>Name</th>{dates.map((date, index) => <th key={date} colSpan={2}>{shortDate(date)}<small>{weekdays[index].slice(-1)}</small></th>)}</tr><tr>{dates.flatMap((_, index) => [<th key={`${index}-early`}>{index < 5 ? "11–6" : "11:30–6"}</th>, <th key={`${index}-late`}>6–C</th>])}</tr></thead><tbody>{records.map((record) => <tr key={record.employeeId}><th>{record.displayName}{!record.updatedAt && <small>未交</small>}</th>{dates.flatMap((date, dayIndex) => (["early", "late"] as const).map((shiftCode) => {
@@ -202,9 +204,9 @@ export default function ManagerApp() {
             const conflict = selected ? assignmentCoverage(record.availability[date], selected) !== "full" : false;
             const custom = selected && !isStandardAssignment(selected, dayIndex) ? formatAssignment(selected) : "";
             const key = assignmentKey(date, shiftCode, record.employeeId);
-            return <td key={`${date}-${shiftCode}`}><button disabled={!editable || Boolean(savingCell)} className={`schedule-cell ${availability.visible ? "is-available" : ""} ${selected ? "is-selected" : ""} ${conflict ? "has-conflict" : ""}`} onClick={() => quickSelect(record, date, dayIndex, shiftCode)} aria-label={`${record.displayName} ${date} ${shiftCode === "early" ? "早班" : "晚班"}${selected ? "，已安排，点击修改" : "，点击安排"}`}><span className="cell-main">{savingCell === key ? "…" : selected ? custom || "✓" : availability.label || (availability.visible ? "+" : "")}</span>{selected && <small>修改</small>}{conflict && <b>!</b>}</button></td>;
+            return <td key={`${date}-${shiftCode}`}><button disabled={Boolean(savingCell)} className={`schedule-cell ${availability.visible ? "is-available" : ""} ${selected ? "is-selected" : ""} ${conflict ? "has-conflict" : ""}`} onClick={() => quickSelect(record, date, dayIndex, shiftCode)} aria-label={`${record.displayName} ${date} ${shiftCode === "early" ? "早班" : "晚班"}${selected ? "，已安排，点击修改" : "，点击安排"}`}><span className="cell-main">{savingCell === key ? "…" : selected ? custom || "✓" : availability.label || (availability.visible ? "+" : "")}</span>{selected && <small>修改</small>}{conflict && <b>!</b>}</button></td>;
           }))}</tr>)}</tbody></table></div>
-          <div className="publish-bar"><div><strong>发布前检查</strong><span>{warnings.length ? `${warnings.length} 项需要留意` : "没有发现冲突"}</span><small>保存后员工看不到；发布后员工可以查看。</small></div><div className="schedule-actions"><button className="save-schedule" disabled={!editable || savingSchedule} onClick={saveFinalSchedule}>{savingSchedule ? "保存中…" : "保存最终班表"}</button><button disabled={!editable || savingSchedule} onClick={publishSchedule}>{publishedAt ? "重新发布最终班表" : "发布最终班表"}</button></div></div>
+          <div className="publish-bar"><div><strong>发布前检查</strong><span>{warnings.length ? `${warnings.length} 项需要留意` : "没有发现冲突"}</span><small>保存后员工看不到；发布后员工可以查看。</small></div><div className="schedule-actions"><button className="save-schedule" disabled={savingSchedule} onClick={saveFinalSchedule}>{savingSchedule ? "保存中…" : "保存最终班表"}</button><button disabled={savingSchedule} onClick={publishSchedule}>{publishedAt ? "重新发布最终班表" : "发布最终班表"}</button></div></div>
           {warnings.length > 0 && <div className="warning-list">{warnings.map((warning) => <p key={warning}>! {warning}</p>)}</div>}
         </section>
       </> : <EmployeeManager records={records} linkStates={linkStates} generatedLinks={generatedLinks} draftNames={draftNames} savingId={savingId} setDraftNames={setDraftNames} saveName={saveName} generateLink={generateLink} />}
@@ -240,6 +242,6 @@ function buildWarnings(records: ManagerRecord[], assignments: ScheduleAssignment
     const record = records.find((value) => value.employeeId === item.employeeId);
     if (record && assignmentCoverage(record.availability[item.shiftDate], item) !== "full") warnings.push(`${record.displayName} 的 ${shortDate(item.shiftDate)} ${item.shiftCode === "early" ? "早班" : "晚班"}超出提交时间（${formatAssignment(item)}）`);
   }
-  for (const record of records) if (!record.updatedAt) warnings.push(`${record.displayName} 尚未提交下周时间`);
+  for (const record of records) if (!record.updatedAt) warnings.push(`${record.displayName} 尚未提交该周时间`);
   return [...new Set(warnings)];
 }

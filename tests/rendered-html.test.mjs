@@ -92,10 +92,16 @@ test("keeps manager draft separate from published schedule", async () => {
   assert.match(draftRoute, /start_minutes, end_minutes, state/);
   assert.match(draftRoute, /早班和晚班必须连续/);
   assert.match(saveRoute, /state = 'draft'/);
+  assert.match(saveRoute, /requestedWeek/);
+  assert.doesNotMatch(saveRoute, /nextWeekStart/);
   assert.match(publishRoute, /DELETE FROM weekly_schedule_assignments[\s\S]*state = 'published'/);
   assert.match(publishRoute, /SELECT week_start, shift_date, shift_code, employee_id, start_minutes, end_minutes, 'published'/);
+  assert.match(publishRoute, /requestedWeek/);
+  assert.doesNotMatch(publishRoute, /nextWeekStart/);
   assert.match(managerUi, /availabilitySlot|assignmentCoverage|保存最终班表|发布最终班表|浅绿：员工可上|红框：时间冲突/);
   assert.match(managerUi, /保存后员工看不到；发布后员工可以查看/);
+  assert.match(managerUi, /历史周（可修改）|未来周（可提前排班）/);
+  assert.doesNotMatch(managerUi, /历史记录（只读）|weekStart >= targetWeek/);
   assert.doesNotMatch(employeeUi, /这台手机会记住登录状态 30 天/);
   assert.doesNotMatch(managerUi, /黄色|legend-partial|coverage-partial/);
   assert.match(scheduleUtils, /availabilitySlot|isStandardAssignment|formatAssignment/);

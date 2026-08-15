@@ -1,5 +1,5 @@
 import { addDays, validIsoDate } from "../../../../db/schedule";
-import { employeeIdFrom, getAvailabilityD1, getEmployee, initializeAvailabilityDatabase, nextWeekStart } from "../../../../db/availability";
+import { employeeIdFrom, getAvailabilityD1, getEmployee, initializeAvailabilityDatabase, requestedWeek } from "../../../../db/availability";
 import { hasManagerSession } from "../../../../db/manager-auth";
 
 type ShiftCode = "early" | "late";
@@ -29,10 +29,10 @@ export async function POST(request: Request) {
     endMinutes?: unknown;
   };
   const employeeId = employeeIdFrom(body.employeeId);
-  const weekStart = nextWeekStart();
+  const weekStart = typeof body.weekStart === "string" ? requestedWeek(body.weekStart) : "";
   const allowedDates = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
   const dayIndex = typeof body.shiftDate === "string" ? allowedDates.indexOf(body.shiftDate) : -1;
-  if (body.weekStart !== weekStart || !validIsoDate(body.shiftDate) || dayIndex < 0) return Response.json({ error: "只能安排下周班表。" }, { status: 400 });
+  if (body.weekStart !== weekStart || !validIsoDate(body.shiftDate) || dayIndex < 0) return Response.json({ error: "请选择正确的排班周和日期。" }, { status: 400 });
   if (!validShiftCode(body.shiftCode)) return Response.json({ error: "班次位置不正确。" }, { status: 400 });
   const previousShiftCode = validShiftCode(body.previousShiftCode) ? body.previousShiftCode : body.shiftCode;
   if (!employeeId || !(await getEmployee(employeeId))) return Response.json({ error: "员工不正确。" }, { status: 400 });

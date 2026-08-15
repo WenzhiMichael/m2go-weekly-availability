@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import ScheduleApp from "./ScheduleApp";
 
 export const metadata: Metadata = {
-  title: "M2GO 每周可上班时间",
-  description: "M2GO 全员共用的每周可上班时间表",
+  title: "M2GO 员工班表",
+  description: "M2GO 员工个人可上班时间与正式班表",
 };
 
 export default function Home() {

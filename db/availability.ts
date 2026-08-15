@@ -45,8 +45,54 @@ const schemaStatements = [
     attempts INTEGER NOT NULL DEFAULT 0,
     window_started INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS employee_access_tokens (
+    employee_id INTEGER PRIMARY KEY REFERENCES availability_employees(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS weekly_schedule_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    week_start TEXT NOT NULL,
+    shift_date TEXT NOT NULL,
+    shift_code TEXT NOT NULL CHECK (shift_code IN ('early', 'late')),
+    employee_id INTEGER NOT NULL REFERENCES availability_employees(id) ON DELETE CASCADE,
+    state TEXT NOT NULL CHECK (state IN ('draft', 'published')),
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_weekly_schedule_assignment
+   ON weekly_schedule_assignments(week_start, shift_date, shift_code, employee_id, state)`,
+  `CREATE INDEX IF NOT EXISTS idx_weekly_schedule_state_week
+   ON weekly_schedule_assignments(state, week_start)`,
+  `CREATE TABLE IF NOT EXISTS weekly_schedule_publications (
+    week_start TEXT PRIMARY KEY,
+    published_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS employee_pair_preferences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_a_id INTEGER NOT NULL REFERENCES availability_employees(id) ON DELETE CASCADE,
+    employee_b_id INTEGER NOT NULL REFERENCES availability_employees(id) ON DELETE CASCADE,
+    preference_type TEXT NOT NULL CHECK (preference_type IN ('prefer', 'avoid')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (employee_a_id < employee_b_id)
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_employee_pair_preference_pair
+   ON employee_pair_preferences(employee_a_id, employee_b_id)`,
   "PRAGMA optimize",
 ];
+
+export type ScheduleAssignment = {
+  shiftDate: string;
+  shiftCode: "early" | "late";
+  employeeId: number;
+};
+
+export type PairPreference = {
+  employeeAId: number;
+  employeeBId: number;
+  preferenceType: "prefer" | "avoid";
+};
 
 export function getAvailabilityD1() {
   if (!env.DB) throw new Error("M2GO 数据库尚未连接。");
@@ -169,6 +215,54 @@ export async function getManagerWeek(weekStart: string) {
     availability: parseAvailability(row.id ? row : null),
     updatedAt: row.updated_at ?? null,
   }));
+}
+
+export function nextWeekStart(now = new Date()) {
+  return addDays(currentWeekStart(now), 7);
+}
+
+export async function getScheduleAssignments(weekStart: string, state: "draft" | "published") {
+  const result = await getAvailabilityD1().prepare(
+    `SELECT shift_date, shift_code, employee_id
+     FROM weekly_schedule_assignments
+     WHERE week_start = ? AND state = ?
+     ORDER BY shift_date, shift_code, employee_id`,
+  ).bind(weekStart, state).all<{ shift_date: string; shift_code: "early" | "late"; employee_id: number }>();
+  return result.results.map((row) => ({ shiftDate: row.shift_date, shiftCode: row.shift_code, employeeId: row.employee_id }));
+}
+
+export async function getPublishedSchedule(weekStart: string) {
+  const [publication, assignments, employees] = await Promise.all([
+    getAvailabilityD1().prepare(
+      "SELECT published_at FROM weekly_schedule_publications WHERE week_start = ?",
+    ).bind(weekStart).first<{ published_at: string }>(),
+    getScheduleAssignments(weekStart, "published"),
+    listEmployees(),
+  ]);
+  return { weekStart, publishedAt: publication?.published_at ?? null, assignments, employees };
+}
+
+export async function getPairPreferences() {
+  const result = await getAvailabilityD1().prepare(
+    `SELECT employee_a_id, employee_b_id, preference_type
+     FROM employee_pair_preferences ORDER BY employee_a_id, employee_b_id`,
+  ).all<{ employee_a_id: number; employee_b_id: number; preference_type: "prefer" | "avoid" }>();
+  return result.results.map((row) => ({
+    employeeAId: row.employee_a_id,
+    employeeBId: row.employee_b_id,
+    preferenceType: row.preference_type,
+  }));
+}
+
+export async function getEmployeeLinkStates() {
+  const result = await getAvailabilityD1().prepare(
+    `SELECT e.id AS employee_id, CASE WHEN t.employee_id IS NULL THEN 0 ELSE 1 END AS has_link,
+            t.updated_at AS link_updated_at
+     FROM availability_employees e
+     LEFT JOIN employee_access_tokens t ON t.employee_id = e.id
+     WHERE e.active = 1 ORDER BY e.id`,
+  ).all<{ employee_id: number; has_link: number; link_updated_at: string | null }>();
+  return result.results.map((row) => ({ employeeId: row.employee_id, hasLink: Boolean(row.has_link), linkUpdatedAt: row.link_updated_at }));
 }
 
 export function requestedWeek(value: string | null) {

@@ -7,8 +7,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
   const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   const origin = `${protocol}://${host}`;
-  const title = "M2GO 每周可上班时间";
-  const description = "M2GO 全员共用的每周可上班时间表";
+  const title = "M2GO 员工班表";
+  const description = "M2GO 员工个人可上班时间与正式班表";
   const socialImage = `${origin}/og.png`;
 
   return {

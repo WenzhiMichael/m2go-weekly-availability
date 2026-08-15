@@ -1,5 +1,7 @@
 export type AvailabilityMap = Record<string, string>;
 export type Employee = { id: number; displayName: string };
+export type ShiftCode = "early" | "late";
+export type ScheduleAssignment = { shiftDate: string; shiftCode: ShiftCode; employeeId: number };
 
 export const weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"];
 
@@ -56,4 +58,27 @@ export function customTimes(dayIndex: number) {
 
 export function endTimes(dayIndex: number) {
   return [...customTimes(dayIndex).slice(1), { value: "C", label: "C · 12:00 AM", minutes: 1440 }];
+}
+
+function minutes(part: string) {
+  if (part === "C") return 1440;
+  const [rawHour, rawMinute = "0"] = part.split(":");
+  let hour = Number(rawHour);
+  const minute = Number(rawMinute);
+  if (hour < 11) hour += 12;
+  return hour * 60 + minute;
+}
+
+export function availabilityCoverage(code: string | undefined, dayIndex: number, shiftCode: ShiftCode) {
+  if (!code) return "none" as const;
+  const [start, end] = code.split("-").map(minutes);
+  const shiftStart = shiftCode === "early" ? (dayIndex < 5 ? 660 : 690) : 1080;
+  const shiftEnd = shiftCode === "early" ? 1080 : 1440;
+  if (start <= shiftStart && end >= shiftEnd) return "full" as const;
+  if (start < shiftEnd && end > shiftStart) return "partial" as const;
+  return "none" as const;
+}
+
+export function assignmentKey(shiftDate: string, shiftCode: ShiftCode, employeeId: number) {
+  return `${shiftDate}|${shiftCode}|${employeeId}`;
 }

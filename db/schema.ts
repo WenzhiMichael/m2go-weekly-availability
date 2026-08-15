@@ -107,3 +107,49 @@ export const managerLoginAttempts = sqliteTable("manager_login_attempts", {
   attempts: integer("attempts").notNull().default(0),
   windowStarted: integer("window_started").notNull(),
 });
+
+export const employeeAccessTokens = sqliteTable(
+  "employee_access_tokens",
+  {
+    employeeId: integer("employee_id").primaryKey().references(() => availabilityEmployees.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [uniqueIndex("idx_employee_access_tokens_hash").on(table.tokenHash)],
+);
+
+export const weeklyScheduleAssignments = sqliteTable(
+  "weekly_schedule_assignments",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    weekStart: text("week_start").notNull(),
+    shiftDate: text("shift_date").notNull(),
+    shiftCode: text("shift_code").notNull(),
+    employeeId: integer("employee_id").notNull().references(() => availabilityEmployees.id, { onDelete: "cascade" }),
+    state: text("state").notNull(),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex("idx_weekly_schedule_assignment").on(table.weekStart, table.shiftDate, table.shiftCode, table.employeeId, table.state),
+    index("idx_weekly_schedule_state_week").on(table.state, table.weekStart),
+  ],
+);
+
+export const weeklySchedulePublications = sqliteTable("weekly_schedule_publications", {
+  weekStart: text("week_start").primaryKey(),
+  publishedAt: text("published_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const employeePairPreferences = sqliteTable(
+  "employee_pair_preferences",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    employeeAId: integer("employee_a_id").notNull().references(() => availabilityEmployees.id, { onDelete: "cascade" }),
+    employeeBId: integer("employee_b_id").notNull().references(() => availabilityEmployees.id, { onDelete: "cascade" }),
+    preferenceType: text("preference_type").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [uniqueIndex("idx_employee_pair_preference_pair").on(table.employeeAId, table.employeeBId)],
+);

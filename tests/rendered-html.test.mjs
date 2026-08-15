@@ -87,5 +87,6 @@ test("keeps manager draft separate from published schedule", async () => {
   assert.match(draftRoute, /state\) VALUES \(\?, \?, \?, \?, 'draft'\)/);
   assert.match(publishRoute, /DELETE FROM weekly_schedule_assignments[\s\S]*state = 'published'/);
   assert.match(publishRoute, /SELECT week_start, shift_date, shift_code, employee_id, 'published'/);
-  assert.match(managerUi, /availabilityCoverage|发布最终班表|同班关系/);
+  assert.match(managerUi, /availabilityCoverage|发布最终班表|黄色：只覆盖部分|红框：安排有冲突/);
+  assert.doesNotMatch(managerUi, /同班关系|希望同班|不能同班/);
 });

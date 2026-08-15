@@ -164,16 +164,3 @@ export const weeklySchedulePublications = sqliteTable("weekly_schedule_publicati
   weekStart: text("week_start").primaryKey(),
   publishedAt: text("published_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
-
-export const employeePairPreferences = sqliteTable(
-  "employee_pair_preferences",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    employeeAId: integer("employee_a_id").notNull().references(() => availabilityEmployees.id, { onDelete: "cascade" }),
-    employeeBId: integer("employee_b_id").notNull().references(() => availabilityEmployees.id, { onDelete: "cascade" }),
-    preferenceType: text("preference_type").notNull(),
-    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-  },
-  (table) => [uniqueIndex("idx_employee_pair_preference_pair").on(table.employeeAId, table.employeeBId)],
-);

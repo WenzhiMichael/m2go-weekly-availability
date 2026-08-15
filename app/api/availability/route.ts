@@ -1,21 +1,13 @@
 import {
   cleanAvailability,
+  employeeIdFrom,
   getAvailabilityD1,
+  getEmployee,
+  getEmployeeAvailability,
   initializeAvailabilityDatabase,
-  normalizeName,
-  parseAvailability,
   requestedWeek,
-  type AvailabilityRow,
 } from "../../../db/availability";
 import { currentWeekStart, validIsoDate } from "../../../db/schedule";
-
-async function readWeek(weekStart: string) {
-  const result = await getAvailabilityD1().prepare(
-    `SELECT id, week_start, normalized_name, display_name, availability_json, created_at, updated_at
-     FROM weekly_availability WHERE week_start = ? ORDER BY id`,
-  ).bind(weekStart).all<AvailabilityRow>();
-  return result.results.map(parseAvailability);
-}
 
 function routeError(error: unknown) {
   const message = error instanceof Error ? error.message : "未知错误";
@@ -25,8 +17,14 @@ function routeError(error: unknown) {
 export async function GET(request: Request) {
   try {
     await initializeAvailabilityDatabase();
-    const weekStart = requestedWeek(new URL(request.url).searchParams.get("week"));
-    return Response.json({ weekStart, currentWeekStart: currentWeekStart(), records: await readWeek(weekStart) });
+    const url = new URL(request.url);
+    const employeeId = employeeIdFrom(url.searchParams.get("employeeId"));
+    if (!employeeId) return Response.json({ error: "员工编号不正确。" }, { status: 400 });
+    const employee = await getEmployee(employeeId);
+    if (!employee) return Response.json({ error: "找不到这位员工。" }, { status: 404 });
+    const weekStart = requestedWeek(url.searchParams.get("week"));
+    const record = await getEmployeeAvailability(employeeId, weekStart);
+    return Response.json({ employee, record, weekStart, currentWeekStart: currentWeekStart() });
   } catch (error) {
     return routeError(error);
   }
@@ -35,9 +33,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     await initializeAvailabilityDatabase();
-    const body = await request.json() as { name?: unknown; weekStart?: unknown; availability?: unknown };
-    const name = normalizeName(body.name);
-    if (!name) return Response.json({ error: "姓名只能填写一个英文名，例如 Alex。" }, { status: 400 });
+    const body = await request.json() as { employeeId?: unknown; weekStart?: unknown; availability?: unknown };
+    const employeeId = employeeIdFrom(body.employeeId);
+    if (!employeeId) return Response.json({ error: "员工编号不正确。" }, { status: 400 });
+    const employee = await getEmployee(employeeId);
+    if (!employee) return Response.json({ error: "找不到这位员工。" }, { status: 404 });
     if (!validIsoDate(body.weekStart)) return Response.json({ error: "周日期不正确。" }, { status: 400 });
     const weekStart = requestedWeek(body.weekStart);
     const availability = cleanAvailability(body.availability, weekStart);
@@ -45,15 +45,20 @@ export async function POST(request: Request) {
 
     const db = getAvailabilityD1();
     await db.prepare(
-      `INSERT INTO weekly_availability (week_start, normalized_name, display_name, availability_json)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(week_start, normalized_name) DO UPDATE SET
-         display_name = excluded.display_name,
+      `INSERT INTO employee_weekly_availability (week_start, employee_id, availability_json)
+       VALUES (?, ?, ?)
+       ON CONFLICT(week_start, employee_id) DO UPDATE SET
          availability_json = excluded.availability_json,
          updated_at = CURRENT_TIMESTAMP`,
-    ).bind(weekStart, name.toLowerCase(), name, JSON.stringify(availability)).run();
+    ).bind(weekStart, employeeId, JSON.stringify(availability)).run();
 
-    return Response.json({ ok: true, weekStart, currentWeekStart: currentWeekStart(), records: await readWeek(weekStart) });
+    return Response.json({
+      ok: true,
+      employee,
+      record: await getEmployeeAvailability(employeeId, weekStart),
+      weekStart,
+      currentWeekStart: currentWeekStart(),
+    });
   } catch (error) {
     return routeError(error);
   }

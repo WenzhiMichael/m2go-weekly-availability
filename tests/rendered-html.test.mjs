@@ -35,3 +35,26 @@ test("keeps product metadata and removes starter preview code", async () => {
   assert.match(packageJson, /m2go-staff-schedule/);
   assert.doesNotMatch(`${page}\n${layout}\n${packageJson}`, /_sites-preview|react-loading-skeleton|Starter Project/);
 });
+
+test("renders the manager entry without exposing manager data", async () => {
+  const response = await render("/manager");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /<title>M2GO 经理总表<\/title>/i);
+  assert.match(html, /正在打开经理页面/);
+});
+
+test("keeps employee and manager data paths separate", async () => {
+  const [employeeUi, availabilityRoute, managerRoute, exampleEnv] = await Promise.all([
+    readFile(new URL("../app/ScheduleApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/availability/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/manager/availability/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../.env.example", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(employeeUi, /className="team-section"/);
+  assert.match(employeeUi, /employee-grid/);
+  assert.match(availabilityRoute, /employeeId/);
+  assert.doesNotMatch(availabilityRoute, /getManagerWeek/);
+  assert.match(managerRoute, /hasManagerSession/);
+  assert.doesNotMatch(exampleEnv, /pbkdf2_sha256\$\d+\$[^\r\n]+/);
+});

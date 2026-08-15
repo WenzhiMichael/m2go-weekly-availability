@@ -76,3 +76,34 @@ export const weeklyAvailability = sqliteTable(
   },
   (table) => [uniqueIndex("idx_weekly_availability_week_name").on(table.weekStart, table.normalizedName)],
 );
+
+export const availabilityEmployees = sqliteTable(
+  "availability_employees",
+  {
+    id: integer("id").primaryKey(),
+    displayName: text("display_name").notNull(),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [uniqueIndex("idx_availability_employees_display_name").on(table.displayName)],
+);
+
+export const employeeWeeklyAvailability = sqliteTable(
+  "employee_weekly_availability",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    weekStart: text("week_start").notNull(),
+    employeeId: integer("employee_id").notNull().references(() => availabilityEmployees.id, { onDelete: "cascade" }),
+    availabilityJson: text("availability_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [uniqueIndex("idx_employee_weekly_availability_week_employee").on(table.weekStart, table.employeeId)],
+);
+
+export const managerLoginAttempts = sqliteTable("manager_login_attempts", {
+  clientKey: text("client_key").primaryKey(),
+  attempts: integer("attempts").notNull().default(0),
+  windowStarted: integer("window_started").notNull(),
+});

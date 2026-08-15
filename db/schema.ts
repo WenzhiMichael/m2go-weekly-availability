@@ -151,6 +151,8 @@ export const weeklyScheduleAssignments = sqliteTable(
     shiftDate: text("shift_date").notNull(),
     shiftCode: text("shift_code").notNull(),
     employeeId: integer("employee_id").notNull().references(() => availabilityEmployees.id, { onDelete: "cascade" }),
+    startMinutes: integer("start_minutes").notNull().default(0),
+    endMinutes: integer("end_minutes").notNull().default(0),
     state: text("state").notNull(),
     updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },

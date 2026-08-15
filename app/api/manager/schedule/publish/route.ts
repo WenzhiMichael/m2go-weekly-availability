@@ -11,8 +11,8 @@ export async function POST(request: Request) {
   await db.batch([
     db.prepare("DELETE FROM weekly_schedule_assignments WHERE week_start = ? AND state = 'published'").bind(weekStart),
     db.prepare(
-      `INSERT INTO weekly_schedule_assignments (week_start, shift_date, shift_code, employee_id, state)
-       SELECT week_start, shift_date, shift_code, employee_id, 'published'
+      `INSERT INTO weekly_schedule_assignments (week_start, shift_date, shift_code, employee_id, start_minutes, end_minutes, state)
+       SELECT week_start, shift_date, shift_code, employee_id, start_minutes, end_minutes, 'published'
        FROM weekly_schedule_assignments WHERE week_start = ? AND state = 'draft'`,
     ).bind(weekStart),
     db.prepare(

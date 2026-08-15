@@ -1,27 +1,29 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  addDays, assignmentKey, customTimes, dayOptions, endTimes, isPreset, shortDate, weekdays,
+  addDays, assignmentKey, customTimes, dayOptions, endTimes, formatAssignment, isPreset,
+  isStandardAssignment, shortDate, weekdays,
   type AvailabilityMap, type Employee, type ScheduleAssignment,
 } from "./schedule-utils";
 
+type PublishedWeek = { weekStart: string; publishedAt: string | null; assignments: ScheduleAssignment[]; employees: Employee[] };
 type EmployeeData = {
   employee: Employee;
   record: { availability: AvailabilityMap; updatedAt: string | null };
   weekStart: string;
   currentWeekStart: string;
-  publishedSchedules: {
-    current: { weekStart: string; publishedAt: string | null; assignments: ScheduleAssignment[]; employees: Employee[] };
-    next: { weekStart: string; publishedAt: string | null; assignments: ScheduleAssignment[]; employees: Employee[] };
-  };
+  publishedSchedules: { current: PublishedWeek; next: PublishedWeek };
   error?: string;
 };
 
 export default function ScheduleApp() {
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
+  const [activeView, setActiveView] = useState<"availability" | "schedule">("availability");
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [weekStart, setWeekStart] = useState("");
   const [availability, setAvailability] = useState<AvailabilityMap>({});
@@ -40,15 +42,11 @@ export default function ScheduleApp() {
       const data = await response.json() as EmployeeData;
       if (response.status === 401) { setAuthorized(false); return; }
       if (!response.ok) throw new Error(data.error || "个人时间暂时无法打开。");
-      setAuthorized(true);
-      setEmployee(data.employee);
-      setWeekStart(data.weekStart);
-      setAvailability(data.record.availability);
-      setPublished(data.publishedSchedules);
+      setAuthorized(true); setEmployee(data.employee); setWeekStart(data.weekStart);
+      setAvailability(data.record.availability); setPublished(data.publishedSchedules);
       setStatus(data.record.updatedAt ? "saved" : "idle");
-    } catch (error) {
-      setStatus("error");
-      setMessage(error instanceof Error ? error.message : "个人时间暂时无法打开。");
+    } catch (caught) {
+      setStatus("error"); setMessage(caught instanceof Error ? caught.message : "个人时间暂时无法打开。");
     } finally { setLoading(false); }
   }
 
@@ -61,10 +59,8 @@ export default function ScheduleApp() {
       const response = await fetch("/api/availability", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
       const data = await response.json() as EmployeeData;
       if (!response.ok) throw new Error(data.error || "自动保存失败。");
-      setAvailability(data.record.availability);
-      setStatus("saved");
-      setMessage("下周可上班时间已自动保存。");
-    }).catch((error: Error) => { setStatus("error"); setMessage(error.message); });
+      setAvailability(data.record.availability); setStatus("saved"); setMessage("下周可上班时间已自动保存。");
+    }).catch((caught: Error) => { setStatus("error"); setMessage(caught.message); });
   }
 
   function updateDay(date: string, code: string | null) {
@@ -76,8 +72,7 @@ export default function ScheduleApp() {
   function openEditor(index: number) {
     const current = availability[dates[index]];
     if (current && !isPreset(current, index)) {
-      const [start, end] = current.split("-");
-      setCustomStart(start); setCustomEnd(end);
+      const [start, end] = current.split("-"); setCustomStart(start); setCustomEnd(end);
     } else { setCustomStart(index < 5 ? "11" : "11:30"); setCustomEnd("6"); }
     setEditingDay(index);
   }
@@ -96,25 +91,60 @@ export default function ScheduleApp() {
     setAuthorized(false); setEmployee(null); setPublished(null);
   }
 
-  if (loading) return <main className="loading-screen"><span className="brand-mark">M2</span><strong>正在打开 M2GO 班表</strong></main>;
+  if (loading) return <main className="loading-screen brand-loading"><img src="/m2go-logo.svg" width={180} height={90} alt="M2GO by Mandarin" /><strong>正在打开 M2GO 班表</strong></main>;
   if (!authorized || !employee) return <AccessPage />;
 
   return (
-    <main className="site-shell">
-      <header className="site-header"><div className="brand-lockup"><span className="brand-mark">M2</span><div><strong>M2GO</strong><small>MY WEEK</small></div></div><div className="header-actions"><span className="week-pill">每周一自动更新</span><button className="header-link" onClick={logout}>退出我的页面</button></div></header>
-      <section className="hero compact-hero"><div><p className="eyebrow">员工个人页面</p><h1>你好，<em>{employee.displayName}</em></h1><p className="hero-copy">先查看本周正式班表，再提交你下周可以上班的时间。你的提交只有你和经理能看到。</p></div><aside className="week-card"><span>NEXT WEEK</span><strong>{shortDate(weekStart)} — {dates[6] && shortDate(dates[6])}</strong><p>正在收集下周时间</p></aside></section>
-      {message && <div className={`notice ${status === "error" ? "notice-error" : ""}`} role="status"><span>{status === "error" ? "!" : "✓"}</span>{message}<button onClick={() => setMessage("")} aria-label="关闭提示">×</button></div>}
-      <PublishedSchedule schedule={published?.current ?? null} activeEmployeeId={employee.id} label="本周正式班表" pending />
-      {published?.next.publishedAt && <PublishedSchedule schedule={published.next} activeEmployeeId={employee.id} label="下周已发布班表" />}
-      <section className="availability-section">
-        <div className="section-heading"><div><p className="step-label">02 · 提交下周时间</p><h2>{employee.displayName}，下周哪天可以上班？</h2><p className="section-copy">只会保存到你的个人记录，其他员工无法查看。</p></div><div className={`save-state ${status}`}><i />{status === "saving" ? "自动保存中…" : status === "saved" ? "已自动保存" : status === "error" ? "保存失败" : "修改后自动保存"}</div></div>
-        <div className="day-grid">{dates.map((date, index) => { const selected = availability[date]; return <article className={`day-card ${selected ? "has-value" : ""}`} key={date}><header><span>{weekdays[index]}</span><strong>{shortDate(date)}</strong></header><div className="shift-options">{dayOptions(index).map((option) => <button key={option.value} className={selected === option.value ? "selected" : ""} onClick={() => updateDay(date, selected === option.value ? null : option.value)}><span>{option.label}</span><strong>{option.hint}</strong><i>{selected === option.value ? "✓" : "+"}</i></button>)}<button className={selected && !isPreset(selected, index) ? "selected custom-selected" : "edit-option"} onClick={() => openEditor(index)}><span>自定义</span><strong>{selected && !isPreset(selected, index) ? selected : "Edit"}</strong><i>✎</i></button></div>{selected && <button className="clear-day" onClick={() => updateDay(date, null)}>清空当天</button>}</article>; })}</div>
-        <footer className="availability-footer"><p><strong>C = 12:00 AM</strong>（当天午夜）· 每天保存一个连续时段</p></footer>
-      </section>
-      <footer className="site-footer"><strong>M2GO</strong><span>个人可上班时间不会向其他员工公开。</span></footer>
+    <main className="app-shell employee-page">
+      <BrandHeader subtitle="STAFF SCHEDULE" actions={<><span className="week-pill">每周一更新</span><button className="ghost-action" onClick={logout}>退出</button></>} />
+      <section className="dashboard-head employee-head"><div><p className="eyebrow">员工个人页面</p><h1>你好，<br /><em>{employee.displayName}</em></h1><p>提交下周可以上班的时间；你的选择只有你和经理能够看到。</p></div><aside className="week-summary"><span>NEXT WEEK</span><strong>{shortDate(weekStart)} — {dates[6] && shortDate(dates[6])}</strong><p>正在收集下周时间</p></aside></section>
+      {message && <Notice error={status === "error"} text={message} close={() => setMessage("")} />}
+      <nav className="workspace-tabs employee-tabs" aria-label="员工页面"><button className={activeView === "availability" ? "active" : ""} onClick={() => setActiveView("availability")}>下周时间</button><button className={activeView === "schedule" ? "active" : ""} onClick={() => setActiveView("schedule")}>正式班表</button></nav>
+
+      {activeView === "availability" ? <section className="surface availability-surface">
+        <div className="section-heading"><div><p className="step-label">下周可上班时间</p><h2>{employee.displayName}，请选择每一天</h2><p>可选早班、晚班、全天或自定义时间，修改后会自动保存。</p></div><div className={`save-state ${status}`}><i />{status === "saving" ? "自动保存中…" : status === "saved" ? "已自动保存" : status === "error" ? "保存失败" : "修改后自动保存"}</div></div>
+        <div className="availability-list">{dates.map((date, index) => { const selected = availability[date]; return <article className={`availability-row ${selected ? "has-value" : ""}`} key={date}><header><span>{weekdays[index]}</span><strong>{shortDate(date)}</strong>{selected && <em>{selected}</em>}</header><div className="availability-actions">{dayOptions(index).map((option) => <button key={option.value} className={selected === option.value ? "selected" : ""} onClick={() => updateDay(date, selected === option.value ? null : option.value)}><span>{option.label}</span><small>{option.hint}</small>{selected === option.value && <b>✓</b>}</button>)}<button className={selected && !isPreset(selected, index) ? "selected custom" : "custom"} onClick={() => openEditor(index)}><span>自定义</span><small>{selected && !isPreset(selected, index) ? selected : "选择时间"}</small>{selected && !isPreset(selected, index) && <b>✓</b>}</button>{selected && <button className="clear-choice" onClick={() => updateDay(date, null)}>清空</button>}</div></article>; })}</div>
+        <footer className="privacy-footer"><strong>C = 12:00 AM</strong><span>每天保存一个连续时段 · 其他员工看不到你的选择</span></footer>
+      </section> : <ScheduleView published={published} employee={employee} />}
+
+      <footer className="site-footer"><strong>M2GO by Mandarin</strong><span>个人可上班时间不会向其他员工公开。</span></footer>
+      <nav className="mobile-bottom-nav" aria-label="员工手机导航"><button className={activeView === "availability" ? "active" : ""} onClick={() => setActiveView("availability")}><span>＋</span>下周时间</button><button className={activeView === "schedule" ? "active" : ""} onClick={() => setActiveView("schedule")}><span>▦</span>正式班表</button></nav>
+
       {editingDay !== null && <div className="modal-backdrop"><button type="button" className="modal-scrim" onClick={() => setEditingDay(null)} aria-label="关闭自定义时间窗口" /><section className="modal" role="dialog" aria-modal="true" aria-labelledby="custom-title"><header><div><p className="step-label">自定义时间</p><h2 id="custom-title">{weekdays[editingDay]} · {shortDate(dates[editingDay])}</h2></div><button onClick={() => setEditingDay(null)} aria-label="关闭">×</button></header><form onSubmit={saveCustom}><div className="custom-time-row"><label>开始时间<select value={customStart} onChange={(event) => setCustomStart(event.target.value)}>{customTimes(editingDay).map((time) => <option key={time.value} value={time.value}>{time.label}</option>)}</select></label><span>→</span><label>结束时间<select value={customEnd} onChange={(event) => setCustomEnd(event.target.value)}>{endTimes(editingDay).map((time) => <option key={time.value} value={time.value}>{time.label}</option>)}</select></label></div><p>结束时间必须晚于开始时间；C 代表午夜 12 点。</p><footer><button type="button" onClick={() => setEditingDay(null)}>取消</button><button className="primary" type="submit">保存这个时段</button></footer></form></section></div>}
     </main>
   );
+}
+
+function BrandHeader({ subtitle, actions }: { subtitle: string; actions: React.ReactNode }) {
+  return <header className="brand-header"><div className="official-brand"><img src="/m2go-logo.svg" width={112} height={56} alt="M2GO by Mandarin" /><span>{subtitle}</span></div><div className="header-actions">{actions}</div></header>;
+}
+
+function Notice({ error, text, close }: { error: boolean; text: string; close: () => void }) {
+  return <div className={`notice ${error ? "notice-error" : ""}`} role="status"><span>{error ? "!" : "✓"}</span>{text}<button onClick={close} aria-label="关闭提示">×</button></div>;
+}
+
+function ScheduleView({ published, employee }: { published: EmployeeData["publishedSchedules"] | null; employee: Employee }) {
+  const current = published?.current ?? null;
+  const next = published?.next?.publishedAt ? published.next : null;
+  return <div className="schedule-view"><MyShiftSummary schedule={current} employee={employee} label="我的本周班次" />{next && <MyShiftSummary schedule={next} employee={employee} label="我的下周班次" />}<PublishedSchedule schedule={current} activeEmployeeId={employee.id} label="本周完整班表" pending />{next && <PublishedSchedule schedule={next} activeEmployeeId={employee.id} label="下周完整班表" />}</div>;
+}
+
+function MyShiftSummary({ schedule, employee, label }: { schedule: PublishedWeek | null; employee: Employee; label: string }) {
+  if (!schedule?.publishedAt) return null;
+  const dates = Array.from({ length: 7 }, (_, index) => addDays(schedule.weekStart, index));
+  const shifts = dates.map((date, dayIndex) => {
+    const own = schedule.assignments.filter((item) => item.employeeId === employee.id && item.shiftDate === date).sort((a, b) => a.startMinutes - b.startMinutes);
+    if (!own.length) return null;
+    return { date, dayIndex, startMinutes: own[0].startMinutes, endMinutes: Math.max(...own.map((item) => item.endMinutes)) };
+  }).filter(Boolean) as Array<{ date: string; dayIndex: number; startMinutes: number; endMinutes: number }>;
+  return <section className="surface my-shifts"><div className="section-heading"><div><p className="step-label">{label}</p><h2>{shifts.length ? `${shifts.length} 天有班` : "这周没有安排班次"}</h2></div><span className="count-badge">{shortDate(schedule.weekStart)} — {shortDate(dates[6])}</span></div>{shifts.length > 0 && <div className="my-shift-grid">{shifts.map((shift) => <article key={shift.date}><span>{weekdays[shift.dayIndex]}</span><strong>{shortDate(shift.date)}</strong><b>{formatAssignment(shift)}</b></article>)}</div>}</section>;
+}
+
+function PublishedSchedule({ schedule, activeEmployeeId, label, pending = false }: { schedule: PublishedWeek | null; activeEmployeeId: number; label: string; pending?: boolean }) {
+  if (!schedule?.publishedAt) return pending ? <section className="surface pending-schedule"><div className="section-heading"><div><p className="step-label">{label}</p><h2>经理正在安排中</h2><p>正式发布后会显示在这里，经理的草稿不会提前公开。</p></div><span className="count-badge muted">尚未发布</span></div></section> : null;
+  const dates = Array.from({ length: 7 }, (_, index) => addDays(schedule.weekStart, index));
+  const assignmentFor = (date: string, shiftCode: "early" | "late", employeeId: number) => schedule.assignments.find((item) => assignmentKey(item.shiftDate, item.shiftCode, item.employeeId) === assignmentKey(date, shiftCode, employeeId));
+  return <section className="surface published-schedule"><div className="section-heading"><div><p className="step-label">{label}</p><h2>{shortDate(schedule.weekStart)} — {shortDate(dates[6])}</h2><p>这是经理最后发布的版本。</p></div><span className="count-badge">已发布</span></div><div className="team-table-wrap"><table className="team-table published-table"><thead><tr><th rowSpan={2}>Name</th>{dates.map((date, index) => <th key={date} colSpan={2}>{shortDate(date)}<small>{weekdays[index].slice(-1)}</small></th>)}</tr><tr>{dates.flatMap((_, index) => [<th key={`${index}-early`}>{index < 5 ? "11–6" : "11:30–6"}</th>, <th key={`${index}-late`}>6–C</th>])}</tr></thead><tbody>{schedule.employees.map((person) => <tr className={person.id === activeEmployeeId ? "my-schedule-row" : ""} key={person.id}><th>{person.displayName}{person.id === activeEmployeeId && <small>我</small>}</th>{dates.flatMap((date, dayIndex) => (["early", "late"] as const).map((shiftCode) => { const assignment = assignmentFor(date, shiftCode, person.id); const custom = assignment && !isStandardAssignment(assignment, dayIndex) ? formatAssignment(assignment) : ""; return <td className={assignment ? "scheduled" : ""} key={`${date}-${shiftCode}`} aria-label={assignment ? `${person.displayName} ${date} ${formatAssignment(assignment)}` : undefined}>{custom}</td>; }))}</tr>)}</tbody></table></div></section>;
 }
 
 function AccessPage() {
@@ -140,13 +170,11 @@ function AccessPage() {
       const data = await response.json() as { employees?: Employee[]; error?: string };
       if (response.ok) setEmployees(data.employees ?? []); else setError(data.error || "员工名单暂时无法打开。");
     }
-    const timer = window.setTimeout(loadAccess, 0);
-    return () => window.clearTimeout(timer);
+    const timer = window.setTimeout(loadAccess, 0); return () => window.clearTimeout(timer);
   }, [setupMode]);
 
   async function login(event: FormEvent) {
-    event.preventDefault();
-    if (!selected) return;
+    event.preventDefault(); if (!selected) return;
     setBusy(true); setError("");
     const response = await fetch("/api/employee/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ employeeId: selected.id, pin }) });
     const data = await response.json() as { error?: string };
@@ -155,21 +183,12 @@ function AccessPage() {
   }
 
   async function setupPin(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true); setError("");
+    event.preventDefault(); setBusy(true); setError("");
     const response = await fetch("/api/employee/setup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pin, confirmPin }) });
     const data = await response.json() as { error?: string };
     if (!response.ok) { setError(data.error || "PIN 暂时无法设置。"); setBusy(false); return; }
     window.location.replace("/");
   }
 
-  return <main className="manager-shell"><header className="site-header"><div className="brand-lockup"><span className="brand-mark">M2</span><div><strong>M2GO</strong><small>STAFF ACCESS</small></div></div><Link className="header-link" href="/manager">经理入口</Link></header>{setupMode ? <section className="access-landing"><div><p className="eyebrow">第一次使用／重置 PIN</p><h1>设置你的<br /><em>四位 PIN。</em></h1><p>{setupEmployee ? `你好，${setupEmployee.displayName}。这个 PIN 以后由你自己记住，经理只能帮你重置，不能查看。` : "正在确认你的设置链接。"}</p></div><form className="access-card pin-card" onSubmit={setupPin}><span className="lock-mark">4</span><h2>{setupEmployee ? `${setupEmployee.displayName}，设置 PIN` : "等待链接确认"}</h2><label>输入四位数字<input aria-label="设置四位员工 PIN" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} type="password" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="••••" required /></label><label>再输入一次<input aria-label="确认四位员工 PIN" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} type="password" value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="••••" required /></label><button disabled={!setupEmployee || pin.length !== 4 || confirmPin.length !== 4 || busy}>{busy ? "设置中…" : "设置并进入我的页面"}</button>{error && <p className="form-error" role="alert">{error}</p>}<small>链接设置成功后会自动失效。</small></form></section> : <section className="staff-login-section"><div className="staff-login-copy"><p className="eyebrow">员工入口</p><h1>选择名字，<br /><em>输入自己的 PIN。</em></h1><p>登录后只会看到并修改你自己的可上班时间。这台手机会记住登录状态 30 天。</p>{invalid && <p className="form-error">这个设置链接无效或已经使用，请联系经理重新发送。</p>}</div>{selected ? <form className="access-card pin-card staff-pin-card" onSubmit={login}><button type="button" className="back-choice" onClick={() => { setSelected(null); setPin(""); setError(""); }}>← 重新选择名字</button><span className="lock-mark">{selected.displayName.slice(0, 1)}</span><h2>{selected.displayName}</h2><label>四位员工 PIN<input aria-label={`${selected.displayName} 四位员工 PIN`} inputMode="numeric" pattern="[0-9]{4}" maxLength={4} type="password" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="••••" required /></label><button disabled={pin.length !== 4 || busy}>{busy ? "登录中…" : "进入我的时间表"}</button>{error && <p className="form-error" role="alert">{error}</p>}<small>忘记 PIN？请联系经理重新发送设置链接。</small></form> : <div className="staff-name-picker">{employees.map((person) => <button key={person.id} onClick={() => { setSelected(person); setError(""); }}><span>#{String(person.id).padStart(2, "0")}</span><strong>{person.displayName}</strong><small>这是我 →</small></button>)}{error && <p className="form-error" role="alert">{error}</p>}</div>}</section>}</main>;
-}
-
-type PublishedWeek = EmployeeData["publishedSchedules"]["current"];
-function PublishedSchedule({ schedule, activeEmployeeId, label, pending = false }: { schedule: PublishedWeek | null; activeEmployeeId: number; label: string; pending?: boolean }) {
-  if (!schedule?.publishedAt) return pending ? <section className="team-section pending-schedule"><div className="section-heading"><div><p className="step-label">01 · {label}</p><h2>经理正在安排中</h2><p>正式发布后会显示在这里，经理的草稿不会提前公开。</p></div><span className="count-badge">尚未发布</span></div></section> : null;
-  const dates = Array.from({ length: 7 }, (_, index) => addDays(schedule.weekStart, index));
-  const assigned = new Set(schedule.assignments.map((item) => assignmentKey(item.shiftDate, item.shiftCode, item.employeeId)));
-  return <section className="team-section"><div className="section-heading"><div><p className="step-label">01 · {label}</p><h2>{shortDate(schedule.weekStart)} — {shortDate(dates[6])}</h2><p>这是经理最后发布的版本。</p></div><span className="count-badge">已发布</span></div><div className="team-table-wrap"><table className="team-table published-table"><thead><tr><th rowSpan={2}>Name</th>{dates.map((date, index) => <th key={date} colSpan={2}>{shortDate(date)}<small>{weekdays[index].slice(-1)}</small></th>)}</tr><tr>{dates.flatMap((_, index) => dayOptions(index).slice(0, 2).map((option) => <th key={`${index}-${option.value}`}>{option.value}</th>))}</tr></thead><tbody>{schedule.employees.map((person) => <tr className={person.id === activeEmployeeId ? "my-schedule-row" : ""} key={person.id}><th>{person.displayName}{person.id === activeEmployeeId && <small>我</small>}</th>{dates.flatMap((date) => (["early", "late"] as const).map((shift) => <td className={assigned.has(assignmentKey(date, shift, person.id)) ? "scheduled" : ""} key={`${date}-${shift}`}>{assigned.has(assignmentKey(date, shift, person.id)) ? "✓" : ""}</td>))}</tr>)}</tbody></table></div></section>;
+  return <main className="auth-shell"><BrandHeader subtitle="STAFF ACCESS" actions={<Link className="ghost-action" href="/manager">经理入口</Link>} />{setupMode ? <section className="auth-layout"><div className="auth-copy"><p className="eyebrow">第一次使用／重置 PIN</p><h1>设置你的<br /><em>四位 PIN。</em></h1><p>{setupEmployee ? `你好，${setupEmployee.displayName}。这个 PIN 由你自己记住，经理只能重置，不能查看。` : "正在确认你的设置链接。"}</p></div><form className="pin-card" onSubmit={setupPin}><span className="auth-kicker">STAFF PIN</span><h2>{setupEmployee ? `${setupEmployee.displayName}，设置 PIN` : "等待链接确认"}</h2><label>输入四位数字<input aria-label="设置四位员工 PIN" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} type="password" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="••••" required /></label><label>再输入一次<input aria-label="确认四位员工 PIN" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} type="password" value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="••••" required /></label><button disabled={!setupEmployee || pin.length !== 4 || confirmPin.length !== 4 || busy}>{busy ? "设置中…" : "设置并进入我的页面"}</button>{error && <p className="form-error" role="alert">{error}</p>}<small>链接设置成功后会自动失效。</small></form></section> : <section className="staff-auth-layout"><div className="auth-copy"><p className="eyebrow">员工入口</p><h1>选择名字，<br /><em>进入我的时间表。</em></h1><p>登录后只会看到并修改你自己的可上班时间。这台手机会记住登录状态 30 天。</p>{invalid && <p className="form-error">这个设置链接无效或已经使用，请联系经理重新发送。</p>}</div>{selected ? <form className="pin-card staff-pin-card" onSubmit={login}><button type="button" className="back-choice" onClick={() => { setSelected(null); setPin(""); setError(""); }}>← 重新选择名字</button><span className="auth-kicker">EMPLOYEE #{String(selected.id).padStart(2, "0")}</span><h2>{selected.displayName}</h2><label>四位员工 PIN<input aria-label={`${selected.displayName} 四位员工 PIN`} inputMode="numeric" pattern="[0-9]{4}" maxLength={4} type="password" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="••••" required /></label><button disabled={pin.length !== 4 || busy}>{busy ? "登录中…" : "进入我的时间表"}</button>{error && <p className="form-error" role="alert">{error}</p>}<small>忘记 PIN？请联系经理重新发送设置链接。</small></form> : <div className="staff-name-picker">{employees.map((person) => <button key={person.id} onClick={() => { setSelected(person); setError(""); }}><span>#{String(person.id).padStart(2, "0")}</span><strong>{person.displayName}</strong><small>这是我 →</small></button>)}{error && <p className="form-error" role="alert">{error}</p>}</div>}</section>}</main>;
 }

@@ -21,6 +21,7 @@ test("renders the M2GO schedule application", async () => {
   assert.match(html, /<title>M2GO 员工班表<\/title>/i);
   assert.match(html, /M2GO/);
   assert.match(html, /正在打开 M2GO 班表/);
+  assert.match(html, /m2go-logo\.svg/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
@@ -79,14 +80,31 @@ test("uses one-time setup links and hashed employee PIN sessions", async () => {
 });
 
 test("keeps manager draft separate from published schedule", async () => {
-  const [draftRoute, publishRoute, managerUi] = await Promise.all([
+  const [draftRoute, saveRoute, publishRoute, managerUi, employeeUi, scheduleUtils, schema] = await Promise.all([
     readFile(new URL("../app/api/manager/schedule/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/manager/schedule/save/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/manager/schedule/publish/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/manager/ManagerApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ScheduleApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/schedule-utils.ts", import.meta.url), "utf8"),
+    readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
   ]);
-  assert.match(draftRoute, /state\) VALUES \(\?, \?, \?, \?, 'draft'\)/);
+  assert.match(draftRoute, /start_minutes, end_minutes, state/);
+  assert.match(draftRoute, /早班和晚班必须连续/);
+  assert.match(saveRoute, /state = 'draft'/);
+  assert.match(saveRoute, /requestedWeek/);
+  assert.doesNotMatch(saveRoute, /nextWeekStart/);
   assert.match(publishRoute, /DELETE FROM weekly_schedule_assignments[\s\S]*state = 'published'/);
-  assert.match(publishRoute, /SELECT week_start, shift_date, shift_code, employee_id, 'published'/);
-  assert.match(managerUi, /availabilityCoverage|发布最终班表|黄色：只覆盖部分|红框：安排有冲突/);
+  assert.match(publishRoute, /SELECT week_start, shift_date, shift_code, employee_id, start_minutes, end_minutes, 'published'/);
+  assert.match(publishRoute, /requestedWeek/);
+  assert.doesNotMatch(publishRoute, /nextWeekStart/);
+  assert.match(managerUi, /availabilitySlot|assignmentCoverage|保存最终班表|发布最终班表|浅绿：员工可上|红框：时间冲突/);
+  assert.match(managerUi, /保存后员工看不到；发布后员工可以查看/);
+  assert.match(managerUi, /历史周（可修改）|未来周（可提前排班）/);
+  assert.doesNotMatch(managerUi, /历史记录（只读）|weekStart >= targetWeek/);
+  assert.doesNotMatch(employeeUi, /这台手机会记住登录状态 30 天/);
+  assert.doesNotMatch(managerUi, /黄色|legend-partial|coverage-partial/);
+  assert.match(scheduleUtils, /availabilitySlot|isStandardAssignment|formatAssignment/);
+  assert.match(schema, /startMinutes: integer\("start_minutes"\)|endMinutes: integer\("end_minutes"\)/);
   assert.doesNotMatch(managerUi, /同班关系|希望同班|不能同班/);
 });

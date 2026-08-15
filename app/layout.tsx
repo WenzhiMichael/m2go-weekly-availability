@@ -8,7 +8,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   const origin = `${protocol}://${host}`;
   const title = "M2GO 员工班表";
-  const description = "M2GO 员工个人可上班时间与正式班表";
+  const description = "M2GO by Mandarin 员工可上班时间与正式班表";
   const socialImage = `${origin}/og.png`;
 
   return {
@@ -19,7 +19,7 @@ export async function generateMetadata(): Promise<Metadata> {
       title,
       description,
       type: "website",
-      images: [{ url: socialImage, width: 1734, height: 907, alt: "M2GO Staff Schedule" }],
+      images: [{ url: socialImage, width: 1734, height: 907, alt: "M2GO by Mandarin Staff Schedule" }],
     },
     twitter: { card: "summary_large_image", title, description, images: [socialImage] },
   };

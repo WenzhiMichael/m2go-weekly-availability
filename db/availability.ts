@@ -76,6 +76,8 @@ const schemaStatements = [
     shift_date TEXT NOT NULL,
     shift_code TEXT NOT NULL CHECK (shift_code IN ('early', 'late')),
     employee_id INTEGER NOT NULL REFERENCES availability_employees(id) ON DELETE CASCADE,
+    start_minutes INTEGER NOT NULL DEFAULT 0,
+    end_minutes INTEGER NOT NULL DEFAULT 0,
     state TEXT NOT NULL CHECK (state IN ('draft', 'published')),
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
@@ -94,6 +96,8 @@ export type ScheduleAssignment = {
   shiftDate: string;
   shiftCode: "early" | "late";
   employeeId: number;
+  startMinutes: number;
+  endMinutes: number;
 };
 
 export function getAvailabilityD1() {
@@ -166,6 +170,23 @@ export function publicEmployee(row: EmployeeRow) {
 export async function initializeAvailabilityDatabase() {
   const db = getAvailabilityD1();
   await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
+  const scheduleColumns = await db.prepare("PRAGMA table_info(weekly_schedule_assignments)").all<{ name: string }>();
+  const columnNames = new Set(scheduleColumns.results.map((column) => column.name));
+  if (!columnNames.has("start_minutes")) await db.prepare("ALTER TABLE weekly_schedule_assignments ADD COLUMN start_minutes INTEGER NOT NULL DEFAULT 0").run();
+  if (!columnNames.has("end_minutes")) await db.prepare("ALTER TABLE weekly_schedule_assignments ADD COLUMN end_minutes INTEGER NOT NULL DEFAULT 0").run();
+  await db.prepare(
+    `UPDATE weekly_schedule_assignments
+     SET start_minutes = CASE
+       WHEN shift_code = 'late' THEN 1080
+       WHEN strftime('%w', shift_date) IN ('0', '6') THEN 690
+       ELSE 660 END
+     WHERE start_minutes = 0`,
+  ).run();
+  await db.prepare(
+    `UPDATE weekly_schedule_assignments
+     SET end_minutes = CASE WHEN shift_code = 'late' THEN 1440 ELSE 1080 END
+     WHERE end_minutes = 0`,
+  ).run();
   await db.batch(Array.from({ length: 8 }, (_, index) => {
     const id = index + 1;
     return db.prepare("INSERT OR IGNORE INTO availability_employees (id, display_name) VALUES (?, ?)").bind(id, String(id));
@@ -225,12 +246,18 @@ export function nextWeekStart(now = new Date()) {
 
 export async function getScheduleAssignments(weekStart: string, state: "draft" | "published") {
   const result = await getAvailabilityD1().prepare(
-    `SELECT shift_date, shift_code, employee_id
+    `SELECT shift_date, shift_code, employee_id, start_minutes, end_minutes
      FROM weekly_schedule_assignments
      WHERE week_start = ? AND state = ?
      ORDER BY shift_date, shift_code, employee_id`,
-  ).bind(weekStart, state).all<{ shift_date: string; shift_code: "early" | "late"; employee_id: number }>();
-  return result.results.map((row) => ({ shiftDate: row.shift_date, shiftCode: row.shift_code, employeeId: row.employee_id }));
+  ).bind(weekStart, state).all<{ shift_date: string; shift_code: "early" | "late"; employee_id: number; start_minutes: number; end_minutes: number }>();
+  return result.results.map((row) => ({
+    shiftDate: row.shift_date,
+    shiftCode: row.shift_code,
+    employeeId: row.employee_id,
+    startMinutes: row.start_minutes,
+    endMinutes: row.end_minutes,
+  }));
 }
 
 export async function getPublishedSchedule(weekStart: string) {

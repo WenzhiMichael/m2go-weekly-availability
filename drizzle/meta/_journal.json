@@ -43,6 +43,13 @@
       "when": 1786814084922,
       "tag": "0005_nasty_franklin_richards",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1786816584684,
+      "tag": "0006_bouncy_mystique",
+      "breakpoints": true
     }
   ]
 }

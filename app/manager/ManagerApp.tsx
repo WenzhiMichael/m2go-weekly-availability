@@ -40,6 +40,7 @@ export default function ManagerApp() {
   const [error, setError] = useState("");
   const [savingId, setSavingId] = useState<number | null>(null);
   const [savingCell, setSavingCell] = useState("");
+  const [savingSchedule, setSavingSchedule] = useState(false);
   const [editing, setEditing] = useState<EditState | null>(null);
   const dates = useMemo(() => weekStart ? Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)) : [], [weekStart]);
   const targetWeek = currentWeekStart ? addDays(currentWeekStart, 7) : "";
@@ -125,7 +126,7 @@ export default function ManagerApp() {
       const itemKey = assignmentKey(item.shiftDate, item.shiftCode, item.employeeId);
       return itemKey !== oldKey && itemKey !== newKey;
     }), data.assignment!]);
-    setMessage("排班草稿已自动保存，员工暂时看不到这次修改。"); setSavingCell(""); return true;
+    setMessage("已保存。"); setSavingCell(""); return true;
   }
 
   async function quickSelect(record: ManagerRecord, shiftDate: string, dayIndex: number, shiftCode: ShiftCode) {
@@ -166,6 +167,16 @@ export default function ManagerApp() {
     setPublishedAt(data.publishedAt ?? new Date().toISOString()); setMessage("最终班表已发布，员工现在可以看到完整班表。");
   }
 
+  async function saveFinalSchedule() {
+    if (!editable || savingSchedule) return;
+    setSavingSchedule(true); setError("");
+    const response = await fetch("/api/manager/schedule/save", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ weekStart }) });
+    const data = await response.json() as { error?: string };
+    if (!response.ok) setError(data.error || "最终班表暂时无法保存。");
+    else setMessage("最终班表已保存，员工暂时看不到。");
+    setSavingSchedule(false);
+  }
+
   if (loading) return <main className="loading-screen brand-loading"><img src="/m2go-logo.svg" width={180} height={90} alt="M2GO by Mandarin" /><strong>正在打开经理页面</strong></main>;
   if (!authorized) return <ManagerLogin pin={pin} setPin={setPin} login={login} error={error} />;
 
@@ -175,7 +186,7 @@ export default function ManagerApp() {
     <main className="app-shell manager-page">
       <BrandHeader subtitle="MANAGER SCHEDULING" actions={<><Link className="ghost-action" href="/">员工页面</Link><button className="ghost-action" onClick={logout}>退出</button></>} />
       <section className="dashboard-head">
-        <div><p className="eyebrow">经理工作台</p><h1>下周排班，<br /><em>一张表完成。</em></h1><p>浅绿是员工提交的时间，深绿是最终安排；特殊上下班时间直接写在格子里。</p></div>
+        <div><p className="eyebrow">经理工作台</p><h1>下周排班，<br /><em>一张表完成。</em></h1></div>
         <aside className="week-summary"><span>{editable ? "NEXT WEEK" : "HISTORY"}</span><strong>{shortDate(weekStart)} — {dates[6] && shortDate(dates[6])}</strong><p>{filled} / 8 人已提交 · {publishedAt ? "已发布" : "未发布"}</p></aside>
       </section>
       {(message || error) && <Notice error={Boolean(error)} text={error || message} close={() => { setMessage(""); setError(""); }} />}
@@ -184,7 +195,7 @@ export default function ManagerApp() {
       {activeTab === "schedule" ? <>
         <div className="week-navigation"><button onClick={() => loadManager(addDays(weekStart, -7))}>← 上一周</button><strong>{editable ? "正在安排下周" : "历史记录（只读）"}</strong><button onClick={() => loadManager(addDays(weekStart, 7))} disabled={weekStart >= targetWeek}>下一周 →</button></div>
         <section className="surface schedule-builder">
-          <div className="section-heading"><div><p className="step-label">全员排班</p><h2>点击格子选人，选中后可修改时间</h2><p>常规班次只显示绿色；11–4、4–C 等特殊时间会直接写在格子里。</p></div><div className="legend"><span className="legend-available">浅绿：员工可上</span><span className="legend-selected">深绿：已经安排</span><span className="legend-conflict">红框：时间冲突</span></div></div>
+          <div className="section-heading"><div><p className="step-label">全员排班</p><h2>点击格子选人，选中后可修改时间</h2></div><div className="legend"><span className="legend-available">浅绿：员工可上</span><span className="legend-selected">深绿：已经安排</span><span className="legend-conflict">红框：时间冲突</span></div></div>
           <div className="team-table-wrap"><table className="team-table manager-schedule-table"><thead><tr><th rowSpan={2}>Name</th>{dates.map((date, index) => <th key={date} colSpan={2}>{shortDate(date)}<small>{weekdays[index].slice(-1)}</small></th>)}</tr><tr>{dates.flatMap((_, index) => [<th key={`${index}-early`}>{index < 5 ? "11–6" : "11:30–6"}</th>, <th key={`${index}-late`}>6–C</th>])}</tr></thead><tbody>{records.map((record) => <tr key={record.employeeId}><th>{record.displayName}{!record.updatedAt && <small>未交</small>}</th>{dates.flatMap((date, dayIndex) => (["early", "late"] as const).map((shiftCode) => {
             const availability = availabilitySlot(record.availability[date], dayIndex, shiftCode);
             const selected = assignmentFor(date, shiftCode, record.employeeId);
@@ -193,11 +204,11 @@ export default function ManagerApp() {
             const key = assignmentKey(date, shiftCode, record.employeeId);
             return <td key={`${date}-${shiftCode}`}><button disabled={!editable || Boolean(savingCell)} className={`schedule-cell ${availability.visible ? "is-available" : ""} ${selected ? "is-selected" : ""} ${conflict ? "has-conflict" : ""}`} onClick={() => quickSelect(record, date, dayIndex, shiftCode)} aria-label={`${record.displayName} ${date} ${shiftCode === "early" ? "早班" : "晚班"}${selected ? "，已安排，点击修改" : "，点击安排"}`}><span className="cell-main">{savingCell === key ? "…" : selected ? custom || "✓" : availability.label || (availability.visible ? "+" : "")}</span>{selected && <small>修改</small>}{conflict && <b>!</b>}</button></td>;
           }))}</tr>)}</tbody></table></div>
-          <div className="publish-bar"><div><strong>发布前检查</strong><span>{warnings.length ? `${warnings.length} 项需要留意` : "没有发现冲突"}</span></div><button disabled={!editable} onClick={publishSchedule}>{publishedAt ? "重新发布最终班表" : "发布最终班表"}</button></div>
+          <div className="publish-bar"><div><strong>发布前检查</strong><span>{warnings.length ? `${warnings.length} 项需要留意` : "没有发现冲突"}</span><small>保存后员工看不到；发布后员工可以查看。</small></div><div className="schedule-actions"><button className="save-schedule" disabled={!editable || savingSchedule} onClick={saveFinalSchedule}>{savingSchedule ? "保存中…" : "保存最终班表"}</button><button disabled={!editable || savingSchedule} onClick={publishSchedule}>{publishedAt ? "重新发布最终班表" : "发布最终班表"}</button></div></div>
           {warnings.length > 0 && <div className="warning-list">{warnings.map((warning) => <p key={warning}>! {warning}</p>)}</div>}
         </section>
       </> : <EmployeeManager records={records} linkStates={linkStates} generatedLinks={generatedLinks} draftNames={draftNames} savingId={savingId} setDraftNames={setDraftNames} saveName={saveName} generateLink={generateLink} />}
-      <footer className="site-footer"><strong>M2GO · MANAGER</strong><span>经理草稿与员工可上班时间不会向其他员工公开。</span></footer>
+      <footer className="site-footer"><strong>M2GO · MANAGER</strong></footer>
 
       {editing && <div className="modal-backdrop"><button type="button" className="modal-scrim" onClick={() => setEditing(null)} aria-label="关闭班次编辑" /><section className="modal shift-editor" role="dialog" aria-modal="true" aria-labelledby="shift-editor-title"><header><div><p className="step-label">修改最终班次</p><h2 id="shift-editor-title">{editing.displayName} · {weekdays[editing.dayIndex]} {shortDate(editing.shiftDate)}</h2></div><button onClick={() => setEditing(null)} aria-label="关闭">×</button></header><div className="availability-reference"><span>员工原始提交</span><strong>{editing.availabilityCode || "没有提交"}</strong></div><form onSubmit={saveEditedAssignment}><fieldset><legend>显示在哪个格子</legend><div className="slot-choice"><button type="button" className={editing.shiftCode === "early" ? "active" : ""} onClick={() => setEditing({ ...editing, shiftCode: "early" })}>早班格</button><button type="button" className={editing.shiftCode === "late" ? "active" : ""} onClick={() => setEditing({ ...editing, shiftCode: "late" })}>晚班格</button></div></fieldset><div className="custom-time-row"><label>开始时间<select value={editing.startMinutes} onChange={(event) => setEditing({ ...editing, startMinutes: Number(event.target.value) })}>{managerTimeOptions(editing.dayIndex).map((time) => <option key={time.value} value={time.value}>{time.label}</option>)}</select></label><span>→</span><label>结束时间<select value={editing.endMinutes} onChange={(event) => setEditing({ ...editing, endMinutes: Number(event.target.value) })}>{managerEndOptions(editing.dayIndex).filter((time) => time.value > editing.startMinutes).map((time) => <option key={time.value} value={time.value}>{time.label}</option>)}</select></label></div><p>特殊时间会直接写在所选格子里。两个格子同时安排时，时间必须连续。</p><footer><button type="button" className="danger-text" onClick={() => removeAssignment(editing)}>清除班次</button><div><button type="button" onClick={() => setEditing(null)}>取消</button><button className="primary" type="submit">保存时间</button></div></footer></form></section></div>}
     </main>
@@ -220,7 +231,7 @@ function EmployeeManager(props: {
 }
 
 function ManagerLogin({ pin, setPin, login, error }: { pin: string; setPin: (value: string) => void; login: (event: FormEvent) => void; error: string }) {
-  return <main className="auth-shell"><BrandHeader subtitle="MANAGER ACCESS" actions={<Link className="ghost-action" href="/">员工入口</Link>} /><section className="auth-layout"><div className="auth-copy"><p className="eyebrow">经理专用</p><h1>看清时间，<br /><em>排好下一周。</em></h1><p>登录后查看全员可上班时间、编辑特殊班次并发布最终班表。</p></div><form className="pin-card" onSubmit={login}><span className="auth-kicker">MANAGER PIN</span><h2>输入六位经理 PIN</h2><input aria-label="六位经理 PIN" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="••••••" type="password" required /><button disabled={pin.length !== 6}>进入经理排班</button>{error && <p className="form-error" role="alert">{error}</p>}</form></section></main>;
+  return <main className="auth-shell"><BrandHeader subtitle="MANAGER ACCESS" actions={<Link className="ghost-action" href="/">员工入口</Link>} /><section className="auth-layout"><div className="auth-copy"><p className="eyebrow">经理专用</p><h1>看清时间，<br /><em>排好下一周。</em></h1></div><form className="pin-card" onSubmit={login}><span className="auth-kicker">MANAGER PIN</span><h2>输入六位经理 PIN</h2><input aria-label="六位经理 PIN" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="••••••" type="password" required /><button disabled={pin.length !== 6}>进入经理排班</button>{error && <p className="form-error" role="alert">{error}</p>}</form></section></main>;
 }
 
 function buildWarnings(records: ManagerRecord[], assignments: ScheduleAssignment[]) {

@@ -119,6 +119,30 @@ export const employeeAccessTokens = sqliteTable(
   (table) => [uniqueIndex("idx_employee_access_tokens_hash").on(table.tokenHash)],
 );
 
+export const employeeCredentials = sqliteTable("employee_credentials", {
+  employeeId: integer("employee_id").primaryKey().references(() => availabilityEmployees.id, { onDelete: "cascade" }),
+  pinHash: text("pin_hash"),
+  pinSetAt: text("pin_set_at"),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const employeeSessions = sqliteTable(
+  "employee_sessions",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    employeeId: integer("employee_id").notNull().references(() => availabilityEmployees.id, { onDelete: "cascade" }),
+    expiresAt: integer("expires_at").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [index("idx_employee_sessions_employee").on(table.employeeId), index("idx_employee_sessions_expires").on(table.expiresAt)],
+);
+
+export const employeeLoginAttempts = sqliteTable("employee_login_attempts", {
+  clientKey: text("client_key").primaryKey(),
+  attempts: integer("attempts").notNull().default(0),
+  windowStarted: integer("window_started").notNull(),
+});
+
 export const weeklyScheduleAssignments = sqliteTable(
   "weekly_schedule_assignments",
   {

@@ -118,8 +118,52 @@ export default function ScheduleApp() {
 }
 
 function AccessPage() {
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [selected, setSelected] = useState<Employee | null>(null);
+  const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [setupEmployee, setSetupEmployee] = useState<Employee | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const setupMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("setup") === "1";
   const invalid = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("access") === "invalid";
-  return <main className="manager-shell"><header className="site-header"><div className="brand-lockup"><span className="brand-mark">M2</span><div><strong>M2GO</strong><small>STAFF ACCESS</small></div></div><Link className="header-link" href="/manager">经理入口</Link></header><section className="access-landing"><div><p className="eyebrow">员工入口</p><h1>使用你的<br /><em>个人专属链接。</em></h1><p>为了保护每个人提交的时间，员工名单不再公开。请打开经理私下发给你的链接，并把它收藏到手机。</p>{invalid && <p className="form-error">这个链接无效或已经被经理重置，请索取新链接。</p>}</div><aside className="access-card"><span className="lock-mark">✓</span><h2>互相看不到提交时间</h2><p>你只能填写自己的时间；经理发布后，大家才会看到完整正式班表。</p></aside></section></main>;
+
+  useEffect(() => {
+    async function loadAccess() {
+      if (setupMode) {
+        const response = await fetch("/api/employee/setup", { cache: "no-store" });
+        const data = await response.json() as { employee?: Employee; error?: string };
+        if (response.ok && data.employee) setSetupEmployee(data.employee); else setError(data.error || "设置链接无效。");
+        return;
+      }
+      const response = await fetch("/api/employees", { cache: "no-store" });
+      const data = await response.json() as { employees?: Employee[]; error?: string };
+      if (response.ok) setEmployees(data.employees ?? []); else setError(data.error || "员工名单暂时无法打开。");
+    }
+    const timer = window.setTimeout(loadAccess, 0);
+    return () => window.clearTimeout(timer);
+  }, [setupMode]);
+
+  async function login(event: FormEvent) {
+    event.preventDefault();
+    if (!selected) return;
+    setBusy(true); setError("");
+    const response = await fetch("/api/employee/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ employeeId: selected.id, pin }) });
+    const data = await response.json() as { error?: string };
+    if (!response.ok) { setError(data.error || "登录失败。"); setBusy(false); return; }
+    window.location.replace("/");
+  }
+
+  async function setupPin(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true); setError("");
+    const response = await fetch("/api/employee/setup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pin, confirmPin }) });
+    const data = await response.json() as { error?: string };
+    if (!response.ok) { setError(data.error || "PIN 暂时无法设置。"); setBusy(false); return; }
+    window.location.replace("/");
+  }
+
+  return <main className="manager-shell"><header className="site-header"><div className="brand-lockup"><span className="brand-mark">M2</span><div><strong>M2GO</strong><small>STAFF ACCESS</small></div></div><Link className="header-link" href="/manager">经理入口</Link></header>{setupMode ? <section className="access-landing"><div><p className="eyebrow">第一次使用／重置 PIN</p><h1>设置你的<br /><em>四位 PIN。</em></h1><p>{setupEmployee ? `你好，${setupEmployee.displayName}。这个 PIN 以后由你自己记住，经理只能帮你重置，不能查看。` : "正在确认你的设置链接。"}</p></div><form className="access-card pin-card" onSubmit={setupPin}><span className="lock-mark">4</span><h2>{setupEmployee ? `${setupEmployee.displayName}，设置 PIN` : "等待链接确认"}</h2><label>输入四位数字<input aria-label="设置四位员工 PIN" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} type="password" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="••••" required /></label><label>再输入一次<input aria-label="确认四位员工 PIN" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} type="password" value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="••••" required /></label><button disabled={!setupEmployee || pin.length !== 4 || confirmPin.length !== 4 || busy}>{busy ? "设置中…" : "设置并进入我的页面"}</button>{error && <p className="form-error" role="alert">{error}</p>}<small>链接设置成功后会自动失效。</small></form></section> : <section className="staff-login-section"><div className="staff-login-copy"><p className="eyebrow">员工入口</p><h1>选择名字，<br /><em>输入自己的 PIN。</em></h1><p>登录后只会看到并修改你自己的可上班时间。这台手机会记住登录状态 30 天。</p>{invalid && <p className="form-error">这个设置链接无效或已经使用，请联系经理重新发送。</p>}</div>{selected ? <form className="access-card pin-card staff-pin-card" onSubmit={login}><button type="button" className="back-choice" onClick={() => { setSelected(null); setPin(""); setError(""); }}>← 重新选择名字</button><span className="lock-mark">{selected.displayName.slice(0, 1)}</span><h2>{selected.displayName}</h2><label>四位员工 PIN<input aria-label={`${selected.displayName} 四位员工 PIN`} inputMode="numeric" pattern="[0-9]{4}" maxLength={4} type="password" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="••••" required /></label><button disabled={pin.length !== 4 || busy}>{busy ? "登录中…" : "进入我的时间表"}</button>{error && <p className="form-error" role="alert">{error}</p>}<small>忘记 PIN？请联系经理重新发送设置链接。</small></form> : <div className="staff-name-picker">{employees.map((person) => <button key={person.id} onClick={() => { setSelected(person); setError(""); }}><span>#{String(person.id).padStart(2, "0")}</span><strong>{person.displayName}</strong><small>这是我 →</small></button>)}{error && <p className="form-error" role="alert">{error}</p>}</div>}</section>}</main>;
 }
 
 type PublishedWeek = EmployeeData["publishedSchedules"]["current"];

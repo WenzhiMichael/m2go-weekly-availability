@@ -1,4 +1,4 @@
-import { createEmployeeSessionCookie, hashEmployeeToken } from "../../../db/employee-auth";
+import { createEmployeeSetupCookie, hashEmployeeToken } from "../../../db/employee-auth";
 import { getAvailabilityD1, initializeAvailabilityDatabase } from "../../../db/availability";
 
 export async function GET(request: Request, context: { params: Promise<{ token: string }> }) {
@@ -16,8 +16,8 @@ export async function GET(request: Request, context: { params: Promise<{ token: 
   return new Response(null, {
     status: 302,
     headers: {
-      location: `${origin}/`,
-      "set-cookie": createEmployeeSessionCookie(request, token),
+      location: `${origin}/?setup=1`,
+      "set-cookie": createEmployeeSetupCookie(request, token),
       "cache-control": "no-store",
       "referrer-policy": "no-referrer",
     },

@@ -223,19 +223,9 @@ h2 { margin-bottom: 8px; color: var(--forest-dark); font-size: clamp(20px, 2vw, 
 .publish-bar div { display: grid; gap: 3px; }
 .publish-bar strong { font-size: 12px; }
 .publish-bar span { color: var(--muted); font-size: 9px; }
-.publish-bar button, .preference-form button { min-height: 41px; padding: 0 17px; color: white; background: var(--forest); border: 0; border-radius: 9px; font-size: 10px; font-weight: 850; }
+.publish-bar button { min-height: 41px; padding: 0 17px; color: white; background: var(--forest); border: 0; border-radius: 9px; font-size: 10px; font-weight: 850; }
 .warning-list { margin-top: 12px; padding: 12px 14px; color: #7d433a; background: #fff5eb; border: 1px solid #efd7bd; border-radius: 10px; }
 .warning-list p { margin: 4px 0; font-size: 9px; line-height: 1.45; }
-.preference-form { display: grid; grid-template-columns: 1fr auto 1fr 1fr auto; align-items: center; gap: 9px; }
-.preference-form select { min-width: 0; height: 41px; padding: 0 10px; color: var(--ink); background: #fafbf9; border: 1px solid #cfd8d1; border-radius: 9px; font-size: 11px; }
-.preference-form > span { color: var(--muted); font-size: 10px; }
-.preference-list { margin-top: 13px; display: grid; gap: 7px; }
-.preference-list > div { padding: 9px 10px; display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 9px; background: #f8faf7; border: 1px solid #e0e6e1; border-radius: 9px; }
-.preference-list strong { font-size: 10px; }
-.preference-list span { padding: 4px 6px; border-radius: 5px; font-size: 8px; font-weight: 850; }
-.preference-list span.avoid { color: #8a3e35; background: #fff0ed; }
-.preference-list span.prefer { color: #286443; background: #e5f5ea; }
-.preference-list button { color: #7a4c45; background: none; border: 0; font-size: 8px; text-decoration: underline; }
 .link-card { grid-template-columns: 40px minmax(0, 1fr) auto; }
 .link-card .link-button { grid-column: 2 / 4; color: var(--forest); background: #edf5e9; border: 1px solid #cddfc7; }
 .link-card .generated-link { grid-column: 1 / 4; width: 100%; color: #4d5c53; font-family: ui-monospace, monospace; font-size: 8px; }
@@ -279,8 +269,6 @@ h2 { margin-bottom: 8px; color: var(--forest-dark); font-size: clamp(20px, 2vw, 
   .manager-name-grid { grid-template-columns: 1fr; }
   .access-landing { min-height: auto; padding: 45px 4px; grid-template-columns: 1fr; gap: 28px; }
   .staff-login-section { min-height: auto; padding: 45px 4px; grid-template-columns: 1fr; gap: 28px; }
-  .preference-form { grid-template-columns: 1fr auto 1fr; }
-  .preference-form select:nth-of-type(3), .preference-form button { grid-column: span 3; }
   .publish-bar { align-items: stretch; flex-direction: column; }
   .publish-bar button { width: 100%; }
   .legend { justify-content: flex-start; }

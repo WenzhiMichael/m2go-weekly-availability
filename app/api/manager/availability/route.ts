@@ -1,4 +1,4 @@
-import { getEmployeeLinkStates, getManagerWeek, getPairPreferences, getScheduleAssignments, initializeAvailabilityDatabase, nextWeekStart, requestedWeek } from "../../../../db/availability";
+import { getEmployeeLinkStates, getManagerWeek, getScheduleAssignments, initializeAvailabilityDatabase, nextWeekStart, requestedWeek } from "../../../../db/availability";
 import { hasManagerSession } from "../../../../db/manager-auth";
 import { currentWeekStart } from "../../../../db/schedule";
 
@@ -10,10 +10,9 @@ export async function GET(request: Request) {
     const weekStart = requested ? requestedWeek(requested) : nextWeekStart();
     const db = (await import("../../../../db/availability")).getAvailabilityD1();
     const publication = await db.prepare("SELECT published_at FROM weekly_schedule_publications WHERE week_start = ?").bind(weekStart).first<{ published_at: string }>();
-    const [records, draftAssignments, pairPreferences, linkStates] = await Promise.all([
+    const [records, draftAssignments, linkStates] = await Promise.all([
       getManagerWeek(weekStart),
       getScheduleAssignments(weekStart, "draft"),
-      getPairPreferences(),
       getEmployeeLinkStates(),
     ]);
     return Response.json({
@@ -22,7 +21,6 @@ export async function GET(request: Request) {
       records,
       draftAssignments,
       publishedAt: publication?.published_at ?? null,
-      pairPreferences,
       linkStates,
     });
   } catch (error) {

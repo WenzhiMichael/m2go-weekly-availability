@@ -87,17 +87,6 @@ const schemaStatements = [
     week_start TEXT PRIMARY KEY,
     published_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
-  `CREATE TABLE IF NOT EXISTS employee_pair_preferences (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    employee_a_id INTEGER NOT NULL REFERENCES availability_employees(id) ON DELETE CASCADE,
-    employee_b_id INTEGER NOT NULL REFERENCES availability_employees(id) ON DELETE CASCADE,
-    preference_type TEXT NOT NULL CHECK (preference_type IN ('prefer', 'avoid')),
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CHECK (employee_a_id < employee_b_id)
-  )`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS idx_employee_pair_preference_pair
-   ON employee_pair_preferences(employee_a_id, employee_b_id)`,
   "PRAGMA optimize",
 ];
 
@@ -105,12 +94,6 @@ export type ScheduleAssignment = {
   shiftDate: string;
   shiftCode: "early" | "late";
   employeeId: number;
-};
-
-export type PairPreference = {
-  employeeAId: number;
-  employeeBId: number;
-  preferenceType: "prefer" | "avoid";
 };
 
 export function getAvailabilityD1() {
@@ -259,18 +242,6 @@ export async function getPublishedSchedule(weekStart: string) {
     listEmployees(),
   ]);
   return { weekStart, publishedAt: publication?.published_at ?? null, assignments, employees };
-}
-
-export async function getPairPreferences() {
-  const result = await getAvailabilityD1().prepare(
-    `SELECT employee_a_id, employee_b_id, preference_type
-     FROM employee_pair_preferences ORDER BY employee_a_id, employee_b_id`,
-  ).all<{ employee_a_id: number; employee_b_id: number; preference_type: "prefer" | "avoid" }>();
-  return result.results.map((row) => ({
-    employeeAId: row.employee_a_id,
-    employeeBId: row.employee_b_id,
-    preferenceType: row.preference_type,
-  }));
 }
 
 export async function getEmployeeLinkStates() {

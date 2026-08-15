@@ -9,7 +9,7 @@ import {
 
 type ManagerRecord = { employeeId: number; displayName: string; weekStart: string; availability: AvailabilityMap; updatedAt: string | null };
 type PairPreference = { employeeAId: number; employeeBId: number; preferenceType: "prefer" | "avoid" };
-type LinkState = { employeeId: number; hasLink: boolean; linkUpdatedAt: string | null };
+type LinkState = { employeeId: number; hasLink: boolean; linkUpdatedAt: string | null; pinConfigured: boolean };
 type ManagerData = {
   weekStart: string; currentWeekStart: string; records: ManagerRecord[]; draftAssignments: ScheduleAssignment[];
   publishedAt: string | null; pairPreferences: PairPreference[]; linkStates: LinkState[]; error?: string;
@@ -82,9 +82,9 @@ export default function ManagerApp() {
     const data = await response.json() as { link?: string; error?: string };
     if (!response.ok || !data.link) { setError(data.error || "个人链接暂时无法生成。"); setSavingId(null); return; }
     setGeneratedLinks((current) => ({ ...current, [employeeId]: data.link! }));
-    setLinkStates((current) => current.map((item) => item.employeeId === employeeId ? { ...item, hasLink: true, linkUpdatedAt: new Date().toISOString() } : item));
+    setLinkStates((current) => current.map((item) => item.employeeId === employeeId ? { ...item, hasLink: true, pinConfigured: false, linkUpdatedAt: new Date().toISOString() } : item));
     await navigator.clipboard.writeText(data.link);
-    setMessage("新链接已生成并复制。旧链接现在已经失效。"); setSavingId(null);
+    setMessage("PIN 设置链接已生成并复制。旧 PIN 和旧登录已经失效。"); setSavingId(null);
   }
 
   async function toggleAssignment(shiftDate: string, shiftCode: ShiftCode, employeeId: number) {
@@ -142,7 +142,7 @@ export default function ManagerApp() {
 
       <section className="manager-section"><div className="section-heading"><div><p className="step-label">02 · 同班关系</p><h2>只给经理看的提醒</h2><p>员工不会看到这些设置，系统只提醒，不会阻止你的决定。</p></div><span className="count-badge">{preferences.length} 条关系</span></div><form className="preference-form" onSubmit={savePreference}><select value={pairA} onChange={(event) => setPairA(Number(event.target.value))}>{records.map((record) => <option key={record.employeeId} value={record.employeeId}>{record.displayName}</option>)}</select><span>和</span><select value={pairB} onChange={(event) => setPairB(Number(event.target.value))}>{records.map((record) => <option key={record.employeeId} value={record.employeeId}>{record.displayName}</option>)}</select><select value={pairType} onChange={(event) => setPairType(event.target.value as "prefer" | "avoid")}><option value="avoid">不能同班</option><option value="prefer">希望同班</option></select><button>保存关系</button></form><div className="preference-list">{preferences.map((item) => <div key={`${item.employeeAId}-${item.employeeBId}`}><strong>{nameFor(records, item.employeeAId)} ＋ {nameFor(records, item.employeeBId)}</strong><span className={item.preferenceType}>{item.preferenceType === "avoid" ? "不能同班" : "希望同班"}</span><button onClick={() => removePreference(item)}>删除</button></div>)}</div></section>
 
-      <section className="manager-section"><div className="section-heading"><div><p className="step-label">03 · 员工与专属链接</p><h2>修改名称并发送个人入口</h2><p>点击生成会同时让该员工之前的链接失效；新链接只显示这一次。</p></div><span className="count-badge">固定 8 个位置</span></div><div className="manager-name-grid">{records.map((record) => { const linkState = linkStates.find((item) => item.employeeId === record.employeeId); return <div className="manager-name-card link-card" key={record.employeeId}><span>#{String(record.employeeId).padStart(2, "0")}</span><input aria-label={`员工 ${record.employeeId} 姓名`} maxLength={40} value={draftNames[record.employeeId] ?? ""} onChange={(event) => setDraftNames((current) => ({ ...current, [record.employeeId]: event.target.value }))} /><button onClick={() => saveName(record.employeeId)} disabled={savingId === record.employeeId || (draftNames[record.employeeId] ?? "").trim() === record.displayName}>保存名</button><button className="link-button" onClick={() => generateLink(record.employeeId)} disabled={savingId === record.employeeId}>{linkState?.hasLink ? "重置并复制链接" : "生成并复制链接"}</button>{generatedLinks[record.employeeId] && <input className="generated-link" readOnly value={generatedLinks[record.employeeId]} onFocus={(event) => event.currentTarget.select()} aria-label={`${record.displayName} 新专属链接`} />}</div>; })}</div></section>
+      <section className="manager-section"><div className="section-heading"><div><p className="step-label">03 · 员工 PIN</p><h2>修改名称并发送 PIN 设置链接</h2><p>员工打开一次性链接后自己设置四位 PIN。忘记 PIN 时在这里重置，旧 PIN 和旧登录会立即失效。</p></div><span className="count-badge">经理看不到员工 PIN</span></div><div className="manager-name-grid">{records.map((record) => { const linkState = linkStates.find((item) => item.employeeId === record.employeeId); return <div className="manager-name-card link-card" key={record.employeeId}><span>#{String(record.employeeId).padStart(2, "0")}</span><input aria-label={`员工 ${record.employeeId} 姓名`} maxLength={40} value={draftNames[record.employeeId] ?? ""} onChange={(event) => setDraftNames((current) => ({ ...current, [record.employeeId]: event.target.value }))} /><button onClick={() => saveName(record.employeeId)} disabled={savingId === record.employeeId || (draftNames[record.employeeId] ?? "").trim() === record.displayName}>保存名</button><button className="link-button" onClick={() => generateLink(record.employeeId)} disabled={savingId === record.employeeId}>{linkState?.pinConfigured ? "重置 PIN 并复制链接" : linkState?.hasLink ? "重新生成设置链接" : "生成 PIN 设置链接"}</button>{generatedLinks[record.employeeId] && <input className="generated-link" readOnly value={generatedLinks[record.employeeId]} onFocus={(event) => event.currentTarget.select()} aria-label={`${record.displayName} 新 PIN 设置链接`} />}</div>; })}</div></section>
       <footer className="site-footer"><strong>M2GO · MANAGER</strong><span>经理草稿与员工可上班时间不会向其他员工公开。</span></footer>
     </main>
   );

@@ -53,15 +53,29 @@ test("keeps employee and manager data paths separate", async () => {
     readFile(new URL("../db/employee-auth.ts", import.meta.url), "utf8"),
     readFile(new URL("../.env.example", import.meta.url), "utf8"),
   ]);
-  assert.doesNotMatch(employeeUi, /employee-grid|selectEmployee/);
-  assert.match(employeeUi, /个人专属链接|publishedSchedules/);
+  assert.doesNotMatch(employeeUi, /selectEmployee/);
+  assert.match(employeeUi, /staff-name-picker|四位员工 PIN|publishedSchedules/);
   assert.match(availabilityRoute, /getEmployeeSession/);
   assert.doesNotMatch(availabilityRoute, /body\.employeeId|searchParams\.get\("employeeId"\)/);
-  assert.match(employeeListRoute, /员工名单不公开/);
+  assert.match(employeeListRoute, /listEmployees/);
   assert.doesNotMatch(availabilityRoute, /getManagerWeek/);
   assert.match(managerRoute, /hasManagerSession/);
   assert.match(employeeAuth, /SHA-256|HttpOnly|SameSite=Strict/);
   assert.doesNotMatch(exampleEnv, /pbkdf2_sha256\$\d+\$[^\r\n]+/);
+});
+
+test("uses one-time setup links and hashed employee PIN sessions", async () => {
+  const [setupRoute, loginRoute, linkRoute, employeeAuth] = await Promise.all([
+    readFile(new URL("../app/api/employee/setup/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/employee/login/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/manager/employees/[id]/link/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../db/employee-auth.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(setupRoute, /createEmployeePinHash|DELETE FROM employee_access_tokens|DELETE FROM employee_sessions/);
+  assert.match(loginRoute, /verifyEmployeePin|employeeLoginBlocked|createEmployeeSession/);
+  assert.match(linkRoute, /pin_hash = NULL|DELETE FROM employee_sessions/);
+  assert.match(employeeAuth, /PBKDF2|210_000|m2go_employee_session|30 \* 24 \* 60 \* 60/);
+  assert.doesNotMatch(`${setupRoute}\n${loginRoute}`, /Response\.json\([^)]*pin_hash/);
 });
 
 test("keeps manager draft separate from published schedule", async () => {

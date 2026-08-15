@@ -51,6 +51,25 @@ const schemaStatements = [
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
+  `CREATE TABLE IF NOT EXISTS employee_credentials (
+    employee_id INTEGER PRIMARY KEY REFERENCES availability_employees(id) ON DELETE CASCADE,
+    pin_hash TEXT,
+    pin_set_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS employee_sessions (
+    token_hash TEXT PRIMARY KEY,
+    employee_id INTEGER NOT NULL REFERENCES availability_employees(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_employee_sessions_employee ON employee_sessions(employee_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_employee_sessions_expires ON employee_sessions(expires_at)`,
+  `CREATE TABLE IF NOT EXISTS employee_login_attempts (
+    client_key TEXT PRIMARY KEY,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    window_started INTEGER NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS weekly_schedule_assignments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     week_start TEXT NOT NULL,
@@ -257,12 +276,13 @@ export async function getPairPreferences() {
 export async function getEmployeeLinkStates() {
   const result = await getAvailabilityD1().prepare(
     `SELECT e.id AS employee_id, CASE WHEN t.employee_id IS NULL THEN 0 ELSE 1 END AS has_link,
-            t.updated_at AS link_updated_at
+            t.updated_at AS link_updated_at, CASE WHEN c.pin_hash IS NULL THEN 0 ELSE 1 END AS pin_configured
      FROM availability_employees e
      LEFT JOIN employee_access_tokens t ON t.employee_id = e.id
+     LEFT JOIN employee_credentials c ON c.employee_id = e.id
      WHERE e.active = 1 ORDER BY e.id`,
-  ).all<{ employee_id: number; has_link: number; link_updated_at: string | null }>();
-  return result.results.map((row) => ({ employeeId: row.employee_id, hasLink: Boolean(row.has_link), linkUpdatedAt: row.link_updated_at }));
+  ).all<{ employee_id: number; has_link: number; link_updated_at: string | null; pin_configured: number }>();
+  return result.results.map((row) => ({ employeeId: row.employee_id, hasLink: Boolean(row.has_link), linkUpdatedAt: row.link_updated_at, pinConfigured: Boolean(row.pin_configured) }));
 }
 
 export function requestedWeek(value: string | null) {

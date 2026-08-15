@@ -1,3 +1,11 @@
+import { initializeAvailabilityDatabase, listEmployees } from "../../../db/availability";
+
 export async function GET() {
-  return Response.json({ error: "员工名单不公开，请使用个人专属链接。" }, { status: 410 });
+  try {
+    await initializeAvailabilityDatabase();
+    return Response.json({ employees: await listEmployees() });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "员工名单暂时无法打开。";
+    return Response.json({ error: message }, { status: 500 });
+  }
 }
